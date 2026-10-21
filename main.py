@@ -142,4 +142,4 @@ async def ticket(interaction: discord.Interaction):
 
 import os
 
-bot.run(os.getenv("TOKEN"))
+bot.run("TOKEN")
