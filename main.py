@@ -140,4 +140,6 @@ async def ticket(interaction: discord.Interaction):
     await interaction.response.send_message("Painel enviado.", ephemeral=True)
     await interaction.channel.send(embed=embed, view=TicketView())
 
-bot.run(MTU2MjI0Njg4NzYyMzM2MDU0Mg.GgR9mK.MB43XXtw133cpuM-QoSt0lhY_SYIPS4rFfGnmE)
+import os
+
+bot.run(os.getenv("TOKEN"))
