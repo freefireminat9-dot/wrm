@@ -68,4 +68,4 @@ async def verificar(ctx, *, texto: str):
     await ctx.send(embed=embed)
 
 # Coloque o Token do seu bot entre as aspas abaixo
-bot.run('COLOQUE_SEU_TOKEN_AQUI')
+bot.run(TOKEN)
