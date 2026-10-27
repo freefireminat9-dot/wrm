@@ -1,107 +1,66 @@
-from time import localtime, strftime, sleep
-from colorama import Fore
-import requests
-import random
-import string
-import os
+import discord
+from discord.ext import commands
+import aiohttp
+import re
 
+intents = discord.Intents.default()
+intents.message_content = True  
 
-class SapphireGen:
-    def __init__(this, code_type: str, prox=None, codes=None):
-        this.type = code_type
-        this.codes = codes
-        this.proxies = prox
-        this.session = requests.Session()
-        this.prox_api = (
-            "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
-        )
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-    def __proxies__(this):
-        req = this.session.get(this.prox_api).text
-        if req != None:
-            open("./data/proxies.txt", "a+").truncate(0)
-            for proxy in req.split("\n"):
-                proxy = proxy.strip()
-                proxy = f"https://{proxy}"
-                open("./data/proxies.txt", "a").write(f"{proxy}\n")
+@bot.event
+async def on_ready():
+    print(f"✅ Bot verificador em massa online como: {bot.user}")
 
-    def generate(this, scrape=None):
-        if scrape == "True":
-            this.__proxies__()
-        else:
-            pass
+@bot.command()
+async def verificar(ctx, *, texto: str):
+    """Comando para verificar múltiplos links de Nitro de uma vez"""
+    
+    # Expressão regular para achar TODOS os códigos de 16 a 24 caracteres alfanuméricos
+    padrao = r"(?:discord\.gift/|discord\.com/gifts/|discordapp\.com/gifts/)?([a-zA-Z0-9]{16,24})"
+    codigos = re.findall(padrao, texto)
+    
+    if not codigos:
+        await ctx.send("❌ Nenhum código ou link de Nitro válido foi encontrado na sua mensagem.")
+        return
+    
+    # Remove códigos duplicados enviados na mesma mensagem
+    codigos = list(set(codigos))
+    
+    # Limite de segurança para não tomar bloqueio (Rate Limit) da API do Discord
+    if len(codigos) > 10:
+        await ctx.send("⚠️ Por segurança, envie no máximo **10 códigos** por vez para evitar que o bot seja bloqueado.")
+        return
 
-        os.system("clear")
-        for _ in range(int(this.codes)):
-            try:
-                if this.proxies == "True":
-                    prox = {
-                        "http": random.choice(
-                            open("./data/proxies.txt", "r").read().splitlines()
-                        )
-                    }
+    status_msg = await ctx.send(f"🔎 Encontrei {len(codigos)} código(s). Verificando na API do Discord...")
+    
+    embed = discord.Embed(title="🎁 Resultado da Checagem em Massa", color=discord.Color.blurple())
+    
+    async with aiohttp.ClientSession() as session:
+        for codigo in codigos:
+            url_api = f"https://discord.com{codigo}?with_application=false&with_subscription_plan=true"
+            
+            async with session.get(url_api) as resposta:
+                if resposta.status == 200:
+                    dados = await resposta.json()
+                    foi_resgatado = dados.get("consumed", True)
+                    nome_plano = dados.get("subscription_plan", {}).get("name", "Nitro")
+                    
+                    if foi_resgatado:
+                        embed.add_field(name=f"Code: {codigo}", value=f"⚠️ **Já Resgatado** ({nome_plano})", inline=False)
+                    else:
+                        embed.add_field(name=f"Code: {codigo}", value=f"✅ **VÁLIDO! Disponível** ({nome_plano})", inline=False)
+                        
+                elif resposta.status == 404:
+                    embed.add_field(name=f"Code: {codigo}", value="❌ **Inválido / Falso**", inline=False)
+                elif resposta.status == 429:
+                    embed.add_field(name=f"Code: {codigo}", value="⏳ **Erro: Muitas requisições (Rate Limit)**", inline=False)
                 else:
-                    prox = None
+                    embed.add_field(name=f"Code: {codigo}", value="⚠️ **Erro interno da API**", inline=False)
 
-                if this.type == "boost":
-                    code = "".join(
-                        [
-                            random.choice(string.ascii_letters + string.digits)
-                            for i in range(24)
-                        ]
-                    )
-                else:
-                    code = "".join(
-                        [
-                            random.choice(string.ascii_letters + string.digits)
-                            for i in range(16)
-                        ]
-                    )
-                req = this.session.get(
-                    f"https://discordapp.com/api/entitlements/gift-codes/{code}",
-                    proxies=prox,
-                    timeout=10,
-                ).status_code
-                if req == 200:
-                    print(
-                        f"{Fore.GREEN}[{strftime('%H:%M', localtime())}] discord.gift/{code} | valid"
-                    )
-                    open("./data/valid.txt", "a").write(f"{code}\n")
-                if req == 404:
-                    print(
-                        f"{Fore.RED}[{strftime('%H:%M', localtime())}] discord.gift/{code} | invalid"
-                    )
+    # Apaga a mensagem de "Aguarde" e envia o resultado final
+    await status_msg.delete()
+    await ctx.send(embed=embed)
 
-                if req == 429:
-                    print(
-                        f"{Fore.YELLOW}[{strftime('%H:%M', localtime())}] discord.gift/{code} | ratelimited"
-                    )
-
-            except Exception as e:
-                print(f"{Fore.RED}[{strftime('%H:%M', localtime())}] {e}")
-
-        print(
-            f"{Fore.LIGHTMAGENTA_EX}[{strftime('%H:%M', localtime())}] Successfully checked {this.codes} codes."
-        )
-        sleep(1.5)
-        os.system("clear")
-
-
-if __name__ == "__main__":
-    while True:
-        code_type = input(
-            f"{Fore.LIGHTMAGENTA_EX}[{strftime('%H:%M', localtime())}] Code Type (boost, classic): "
-        )
-        prox = input(
-            f"{Fore.LIGHTMAGENTA_EX}[{strftime('%H:%M', localtime())}] Proxies (True, False): "
-        )
-        if prox == "True":
-            scrape_proxy = input(
-                f"{Fore.LIGHTMAGENTA_EX}[{strftime('%H:%M', localtime())}] Scrape proxies (True, False): "
-            )
-        else:
-            scrape_proxy = False
-        codes = input(
-            f"{Fore.LIGHTMAGENTA_EX}[{strftime('%H:%M', localtime())}] Number of codes: "
-        )
-        SapphireGen(code_type, prox, codes).generate(scrape=scrape_proxy)
+# Coloque o Token do seu bot entre as aspas abaixo
+bot.run('COLOQUE_SEU_TOKEN_AQUI')
