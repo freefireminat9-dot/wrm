@@ -59,4 +59,4 @@ async def verificar(ctx, *, texto: str):
 
     await ctx.send(embed=embed)
 
-bot.run(DISCORD_TOKEN)
+bot.run
