@@ -1,62 +1,44 @@
-import discord
-from discord.ext import commands
-import aiohttp
+import requests
 import re
-import asyncio
 
-intents = discord.Intents.default()
-intents.message_content = True  
-
-bot = commands.Bot(command_prefix="!", intents=intents)
+# Expressão regular para capturar links de gift
+GIFT_REGEX = re.compile(r"(?:discord\.gift/|discord\.com/gifts/|discordapp\.com/gifts/)([a-zA-Z0-9]{16,24})")
 
 @bot.event
-async def on_ready():
-    print(f"⚡ BOT INSTANTÂNEO ONLINE: {bot.user}")
-
-async def checar_codigo_individual(session, codigo):
-    url_api = f"https://discord.com{codigo}?with_application=false&with_subscription_plan=true"
-    
-    try:
-        # Timeout curto para responder rápido de qualquer jeito
-        async with session.get(url_api, timeout=2) as resposta:
-            if resposta.status == 200:
-                dados = await resposta.json()
-                foi_resgatado = dados.get("consumed", True)
-                nome_plano = dados.get("subscription_plan", {}).get("name", "Nitro")
-                
-                if foi_resgatado:
-                    return codigo, f"⚠️ **Já Resgatado** ({nome_plano})"
-                return codigo, f"✅ **VÁLIDO! Disponível** ({nome_plano})"
-                
-            elif resposta.status == 404:
-                return codigo, "❌ **Inválido / Falso**"
-            elif resposta.status == 429:
-                return codigo, "⏳ **IP Bloqueado temporariamente pelo Discord (Rate Limit)**"
-            else:
-                return codigo, f"⚠️ **Erro na API ({resposta.status})**"
-    except Exception:
-        return codigo, "⏳ **Sem resposta da API**"
-
-@bot.command()
-async def verificar(ctx, *, texto: str):
-    # Procura e limpa os códigos enviados
-    padrao = r"(?:discord\.gift/|discord\.com/gifts/|discordapp\.com/gifts/)?([a-zA-Z0-9]{16,24})"
-    codigos = list(set(re.findall(padrao, texto)))[:10]
-    
-    if not codigos:
-        await ctx.send("❌ Nenhum link de Nitro encontrado.")
+async def on_message(message):
+    # Ignora mensagens do próprio bot para evitar loops
+    if message.author == bot.user:
         return
 
-    # Consulta tudo de uma vez só no mesmo instante
-    async with aiohttp.ClientSession() as session:
-        tarefas = [checar_codigo_individual(session, cod) for cod in codigos]
-        resultados = await asyncio.gather(*tarefas)
+    # Procura por padrões de gift link na mensagem
+    match = GIFT_REGEX.search(message.content)
+    
+    if match:
+        code = match.group(1)
+        
+        # Consulta imediata à API oficial do Discord
+        url = f"https://discord.com{code}"
+        response = requests.get(url)
 
-    # Cria e envia o resultado direto, sem enrolação
-    embed = discord.Embed(title="⚡ Resultado Instantâneo", color=discord.Color.from_rgb(255, 115, 250))
-    for codigo, resultado_texto in resultados:
-        embed.add_field(name=f"Código: {codigo}", value=resultado_texto, inline=False)
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verifica se já foi usado
+            if data.get("uses", 0) >= data.get("max_uses", 1):
+                await message.reply(f"⚠️ **CÓDIGO JÁ RESGATADO**\nO código `{code}` é real, mas já foi pego por outra pessoa.")
+            else:
+                sku_name = data.get("store_listing", {}).get("sku", {}).get("name", "Nitro")
+                await message.reply(f"🎉 **CÓDIGO VÁLIDO E DISPONÍVEL!**\n🎁 Tipo: **{sku_name}**\n👉 Resgate rápido!")
+                
+        elif response.status_code == 404:
+            await message.reply(f"❌ **CÓDIGO INVÁLIDO**\nO código `{code}` não existe ou é falso.")
+            
+        elif response.status_code == 429:
+            await message.reply("🛑 **RATE LIMIT**\nO Discord bloqueou temporariamente as checagens por excesso de tentativas. Tente de novo em alguns minutos.")
+            
+        else:
+            await message.reply(f"❓ **ERRO DESCONHECIDO**\nA API respondeu com status {response.status_code}.")
 
-    await ctx.send(embed=embed)
-
-bot.run
+    # IMPORTANTE: Mantém os outros comandos normais do seu bot funcionando
+    await bot.process_commands(message)
+bot.run(DISCORD_TOKEN)
